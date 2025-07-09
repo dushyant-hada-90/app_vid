@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Index Finger Tracker</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    video, canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <!-- MediaPipe dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <script>
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+
+    // Auto-resize canvas
+    function resizeCanvas() {
+      canvasElement.width = window.innerWidth;
+      canvasElement.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // WebSocket connection to laptop
+    const socket = new WebSocket("ws://10.93.16.202:8765"); // 🔁 Replace with your laptop IP
+
+    socket.onopen = () => console.log("✅ WebSocket connected");
+    socket.onerror = (err) => console.error("❌ WebSocket error:", err);
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+
+    hands.onResults(results => {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      if (results.multiHandLandmarks.length > 0) {
+        const indexTip = results.multiHandLandmarks[0][8];  // Index finger tip
+        const x = indexTip.x * canvasElement.width;
+        const y = indexTip.y * canvasElement.height;
+
+        // Draw index point
+        canvasCtx.beginPath();
+        canvasCtx.arc(x, y, 10, 0, 2 * Math.PI);
+        canvasCtx.fillStyle = 'blue';
+        canvasCtx.fill();
+
+        // Draw full-screen boundary
+        canvasCtx.strokeStyle = 'red';
+        canvasCtx.lineWidth = 3;
+        canvasCtx.strokeRect(0, 0, canvasElement.width, canvasElement.height);
+
+        // Draw coordinates
+        canvasCtx.fillStyle = 'black';
+        canvasCtx.font = '20px Arial';
+        canvasCtx.fillText(`(${Math.round(x)}, ${Math.round(y)})`, x + 10, y - 10);
+
+        // Send to laptop
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ x: Math.round(x), y: Math.round(y) }));
+        }
+      }
+
+      canvasCtx.restore();
+    });
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await hands.send({ image: videoElement });
+      },
+      width: window.innerWidth,
+      height: window.innerHeight
+    });
+
+    camera.start();
+  </script>
+</body>
+</html>
