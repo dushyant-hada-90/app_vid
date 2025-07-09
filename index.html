@@ -40,8 +40,8 @@
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // WebSocket connection to laptop
-    const socket = new WebSocket("ws://10.93.16.202:8765"); // 🔁 Replace with your laptop IP
+    // ✅ Secure WebSocket (tunneled via ngrok)
+    const socket = new WebSocket("wss://7fb34ad5ff89.ngrok-free.app");
 
     socket.onopen = () => console.log("✅ WebSocket connected");
     socket.onerror = (err) => console.error("❌ WebSocket error:", err);
@@ -83,7 +83,7 @@
         canvasCtx.font = '20px Arial';
         canvasCtx.fillText(`(${Math.round(x)}, ${Math.round(y)})`, x + 10, y - 10);
 
-        // Send to laptop
+        // Send to WebSocket server
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ x: Math.round(x), y: Math.round(y) }));
         }
