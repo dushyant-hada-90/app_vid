@@ -5,22 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Index Finger Tracker</title>
   <style>
-    body {
+    html, body {
       margin: 0;
+      padding: 0;
+      height: 100%;
+      background: black;
       overflow: hidden;
     }
+
+    #container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
     video, canvas {
       position: absolute;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-      object-fit: cover;
+      max-width: 100vw;
+      max-height: 100vh;
+      aspect-ratio: 3/4; /* keeps typical portrait camera ratio */
+      object-fit: contain;
     }
   </style>
 </head>
 <body>
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas"></canvas>
+  <div id="container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+  </div>
 
   <!-- MediaPipe dependencies -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -32,22 +47,17 @@
     const canvasElement = document.getElementById('canvas');
     const canvasCtx = canvasElement.getContext('2d');
 
-    // Auto-resize canvas
-    function resizeCanvas() {
-      canvasElement.width = window.innerWidth;
-      canvasElement.height = window.innerHeight;
+    function matchCanvasToVideo() {
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
     }
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
 
-    // ✅ Secure WebSocket (tunneled via ngrok)
     const socket = new WebSocket("wss://7fb34ad5ff89.ngrok-free.app");
-
     socket.onopen = () => console.log("✅ WebSocket connected");
-    socket.onerror = (err) => console.error("❌ WebSocket error:", err);
+    socket.onerror = err => console.error("❌ WebSocket error:", err);
 
     const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
 
     hands.setOptions({
@@ -58,32 +68,31 @@
     });
 
     hands.onResults(results => {
+      if (!videoElement.videoWidth || !videoElement.videoHeight) return;
+
+      matchCanvasToVideo();
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.multiHandLandmarks.length > 0) {
-        const indexTip = results.multiHandLandmarks[0][8];  // Index finger tip
+        const indexTip = results.multiHandLandmarks[0][8];
         const x = indexTip.x * canvasElement.width;
         const y = indexTip.y * canvasElement.height;
 
-        // Draw index point
         canvasCtx.beginPath();
         canvasCtx.arc(x, y, 10, 0, 2 * Math.PI);
         canvasCtx.fillStyle = 'blue';
         canvasCtx.fill();
 
-        // Draw full-screen boundary
         canvasCtx.strokeStyle = 'red';
         canvasCtx.lineWidth = 3;
         canvasCtx.strokeRect(0, 0, canvasElement.width, canvasElement.height);
 
-        // Draw coordinates
         canvasCtx.fillStyle = 'black';
         canvasCtx.font = '20px Arial';
         canvasCtx.fillText(`(${Math.round(x)}, ${Math.round(y)})`, x + 10, y - 10);
 
-        // Send to WebSocket server
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ x: Math.round(x), y: Math.round(y) }));
         }
@@ -96,8 +105,8 @@
       onFrame: async () => {
         await hands.send({ image: videoElement });
       },
-      width: window.innerWidth,
-      height: window.innerHeight
+      width: 720,  // mobile-friendly
+      height: 960
     });
 
     camera.start();
